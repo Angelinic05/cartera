@@ -34,26 +34,27 @@ window.addEventListener('load', async () => {
         let identificacion = document.getElementById('identificacion').value;
         let direccion = document.getElementById('direccion').value;
         let telefono = document.getElementById('telefono').value;
-        let ciudad = document.getElementById('ciudad').value;
-        let pais = document.getElementById('pais').value.toLowerCase();
 
         // Obtener la fecha actual
         let fechaActual = new Date().toLocaleDateString();
 
-        // Validar el correo electrónico
-        const isEmailValid = await validateEmail(email);
+        // Validar el correo electrónico y obtener el país y la ciudad
+        const validationResult = await validateEmail(email);
         const messageElement = document.getElementById('message');
 
-        if (isEmailValid) {
+        if (validationResult.found) {
             messageElement.textContent = '';
 
-            // Generar el PDF principal
-            await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad);
+            // Generar el PDF principal con la ciudad de Google Sheets
+            await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, validationResult.city);
 
-            // Si el país es Colombia, generar también el documento de habeas
-            if (pais === 'colombia') {
+            // Si el país es "Colombia" en la respuesta, generar también el documento de habeas data
+            if (validationResult.country.toLowerCase() === 'colombia') {
                 await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
             }
+
+            // Enviar el PDF generado por correo
+            await sendSimpleEmail(email);
         } else {
             messageElement.textContent = 'No está registrado.';
             messageElement.style.color = 'red';
@@ -64,7 +65,7 @@ window.addEventListener('load', async () => {
 async function validateEmail(email) {
     const response = await fetch(`https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec?email=${encodeURIComponent(email)}`);
     const data = await response.json();
-    return data.found; // Retorna true si el correo está registrado
+    return data; // Retorna un objeto con { found, country, city }
 }
 
 async function generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad) {
@@ -82,9 +83,15 @@ async function generatePDF(nombre, identificacion, fechaActual, direccion, telef
     pdf.text(direccion, 200, 180);         // Dirección
     pdf.text(telefono, 113, 669);          // Teléfono
     pdf.text(email, 121, 690);             // Email
-    pdf.text(ciudad, 130, 120);         // Cantidad de cuotas (ajusta posición según el diseño)
+    pdf.text(ciudad, 130, 120);            // Ciudad desde Google Sheets
 
-    pdf.save("Compromiso de pago.pdf");
+    const pdfBlob = pdf.output('blob');
+
+    // Crear un enlace de descarga para el archivo generado
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(pdfBlob);  // Crear un enlace de descarga para el PDF
+    link.download = "COMPROMISO DE PAGO.pdf";   // Nombre del archivo a descargar
+    link.click();  // Simular un clic para iniciar la descarga
 }
 
 async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
@@ -98,5 +105,27 @@ async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     pdf.text(identificacion, 85, 693);     // Ajusta posición para la identificación
     pdf.addImage(signatureImage, 'PNG', 110, 630, 140, 50);  // Firma en una posición ajustada
 
-    pdf.save("habeas.pdf");
+    pdf.save("HABEAS DATA.pdf");
 }
+
+async function sendSimpleEmail(email) {
+    // Preparar los datos para enviar
+    const formData = new FormData();
+    formData.append('toEmail', email);  // Correo recibido del formulario
+    formData.append('ccEmail', 'angeliloza01@gmail.com'); // Correo adicional
+
+    // Enviar los datos al servidor utilizando fetch
+    const response = await fetch('https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec', {
+        method: 'POST',
+        body: formData
+    });
+
+    const result = await response.json();
+    console.log("Resultado de la respuesta del servidor:", result);
+    
+    if (result.status === 'success') {
+        alert('Correo enviado correctamente.');
+    } else {
+        alert('Error al enviar el correo.');
+    }
+}    
