@@ -1,17 +1,20 @@
 function loadImage(url) {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('GET', url, true);
         xhr.responseType = "blob";
         xhr.onload = function (e) {
-            const reader = new FileReader();
-            reader.onload = function (event) {
-                const res = event.target.result;
-                resolve(res);
+            if (xhr.status === 200) {
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    resolve(event.target.result);
+                };
+                reader.readAsDataURL(xhr.response);
+            } else {
+                reject(new Error('Error al cargar la imagen'));
             }
-            const file = this.response;
-            reader.readAsDataURL(file);
-        }
+        };
+        xhr.onerror = () => reject(new Error('Error de red'));
         xhr.send();
     });
 }
@@ -29,6 +32,7 @@ window.addEventListener('load', async () => {
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        // Obtener los valores de los campos del formulario
         let email = document.getElementById('email').value;
         let nombre = document.getElementById('nombre').value;
         let identificacion = document.getElementById('identificacion').value;
@@ -46,15 +50,19 @@ window.addEventListener('load', async () => {
             messageElement.textContent = '';
 
             // Generar el PDF principal con la ciudad de Google Sheets
-            await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, validationResult.city);
+            const ciudad = validationResult.city; // Asignar la ciudad desde la validación
+
+            // Generar el PDF de compromiso
+            const pdfCompromisoBlob = await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad);
 
             // Si el país es "Colombia" en la respuesta, generar también el documento de habeas data
+            let pdfHabeasBlob = null;
             if (validationResult.country.toLowerCase() === 'colombia') {
-                await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
+                pdfHabeasBlob = await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
             }
 
             // Enviar el PDF generado por correo
-            await sendSimpleEmail(email);
+            await sendSimpleEmail(email, validationResult.country, pdfCompromisoBlob, pdfHabeasBlob);
         } else {
             messageElement.textContent = 'No está registrado.';
             messageElement.style.color = 'red';
@@ -63,9 +71,15 @@ window.addEventListener('load', async () => {
 });
 
 async function validateEmail(email) {
-    const response = await fetch(`https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec?email=${encodeURIComponent(email)}`);
-    const data = await response.json();
-    return data; // Retorna un objeto con { found, country, city }
+    try {
+        const response = await fetch(`https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec?email=${encodeURIComponent(email)}`);
+        const data = await response.json();
+        console.log("Resultado de la validación de email:", data);
+        return data; // Retorna un objeto con { found, country, city }
+    } catch (error) {
+        console.error("Error en la validación de email:", error);
+        return { found: false, country: '', city: '' }; // Retorna un objeto por defecto en caso de error
+    }
 }
 
 async function generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad) {
@@ -81,17 +95,12 @@ async function generatePDF(nombre, identificacion, fechaActual, direccion, telef
     pdf.text(identificacion, 88, 193);     // Identificación
     pdf.text(fechaActual, 400, 120);       // Fecha
     pdf.text(direccion, 200, 180);         // Dirección
-    pdf.text(telefono, 113, 669);          // Teléfono
+    pdf.text(telefono , 113, 669);          // Teléfono
     pdf.text(email, 121, 690);             // Email
     pdf.text(ciudad, 130, 120);            // Ciudad desde Google Sheets
 
-    const pdfBlob = pdf.output('blob');
-
-    // Crear un enlace de descarga para el archivo generado
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(pdfBlob);  // Crear un enlace de descarga para el PDF
-    link.download = "COMPROMISO DE PAGO.pdf";   // Nombre del archivo a descargar
-    link.click();  // Simular un clic para iniciar la descarga
+    pdf.save("COMPROMISO DE PAGO.pdf");
+    return pdf.output('blob');
 }
 
 async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
@@ -106,26 +115,40 @@ async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     pdf.addImage(signatureImage, 'PNG', 110, 630, 140, 50);  // Firma en una posición ajustada
 
     pdf.save("HABEAS DATA.pdf");
+    return pdf.output('blob');
 }
 
-async function sendSimpleEmail(email) {
-    // Preparar los datos para enviar
-    const formData = new FormData();
-    formData.append('toEmail', email);  // Correo recibido del formulario
-    formData.append('ccEmail', 'angeliloza01@gmail.com'); // Correo adicional
+async function sendSimpleEmail(email, country, pdfCompromisoBlob, pdfHabeasBlob) {
+    try {
+        // Preparar los datos para enviar
+        const formData = new FormData();
+        formData.append('toEmail', email);
+        formData.append('ccEmail', 'angeliloza01@gmail.com');
+        formData.append('country', country);
+        
+        // Adjuntar el PDF de compromiso
+        formData.append('pdfCompromiso', pdfCompromisoBlob, 'compromiso.pdf');
 
-    // Enviar los datos al servidor utilizando fetch
-    const response = await fetch('https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec', {
-        method: 'POST',
-        body: formData
-    });
+        // Adjuntar el PDF de habeas data si corresponde
+        if (pdfHabeasBlob) {
+            formData.append('pdfHabeas', pdfHabeasBlob, 'habeas.pdf');
+        }
 
-    const result = await response.json();
-    console.log("Resultado de la respuesta del servidor:", result);
-    
-    if (result.status === 'success') {
-        alert('Correo enviado correctamente.');
-    } else {
-        alert('Error al enviar el correo.');
+        // Enviar los datos al servidor
+        const response = await fetch('https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        console.log("Resultado de la respuesta del servidor:", result);
+        
+        if (result.status === 'success') {
+            alert('Correo enviado correctamente.');
+        } else {
+            alert('Error al enviar el correo.');
+        }
+    } catch (error) {
+        console.error("Error al enviar el correo:", error);
     }
-}    
+}
