@@ -33,6 +33,12 @@ window.addEventListener('load', async () => {
         let nombres = document.getElementById('nombre').value;
         let apellidos = document.getElementById('apellido').value;
         let identificacion = document.getElementById('identificacion').value;
+        let direccion = document.getElementById('direccion').value;
+        let telefono = document.getElementById('telefono').value;
+        let ciudad = document.getElementById('ciudad').value;
+
+        // Obtener la fecha actual
+        let fechaActual = new Date().toLocaleDateString();
 
         // Validar el correo electrónico
         const isEmailValid = await validateEmail(email);
@@ -40,7 +46,7 @@ window.addEventListener('load', async () => {
 
         if (isEmailValid) {
             messageElement.textContent = '';
-            generatePDF(nombres, apellidos, identificacion);
+            generatePDF(nombres, apellidos, identificacion, fechaActual, direccion, telefono, email, ciudad);
         } else {
             messageElement.textContent = 'No está registrado.';
             messageElement.style.color = 'red';
@@ -54,19 +60,24 @@ async function validateEmail(email) {
     return data.found; // Retorna true si el correo está registrado
 }
 
-async function generatePDF(nombres, apellidos, identificacion) {
-    const image = await loadImage("formulario.jpg"); // Asegúrate de que esta imagen esté en la ruta correcta
+async function generatePDF(nombres, apellidos, identificacion, fechaActual, direccion, telefono, email, ciudad) {
+    const image = await loadImage("COMPROMISO DE PAGO.jpg"); // Asegúrate de que esta imagen esté en la ruta correcta
     const signatureImage = signaturePad.toDataURL();
 
     const pdf = new jsPDF('p', 'pt', 'letter');
 
     pdf.addImage(image, 'PNG', 0, 0, 565, 792);
-    pdf.addImage(signatureImage, 'PNG', 80, 650, 150, 60);
+    pdf.addImage(signatureImage, 'PNG', 80, 580, 150, 60);
 
-    pdf.setFontSize(8);
-    pdf.text(nombres, 320, 127);
-    pdf.text(apellidos, 370, 127);
-    pdf.text(identificacion, 220, 140); // Añadir la identificación en el PDF
+    pdf.setFontSize(10);
+    pdf.text(nombres, 210, 162);
+    pdf.text(apellidos, 280, 162);
+    pdf.text(identificacion, 88, 193);
+    pdf.text(fechaActual, 400, 120);       // Añadir la fecha actual en el PDF
+    pdf.text(direccion, 200, 180);         // Añadir la dirección en el PDF
+    pdf.text(telefono, 113, 669);          // Añadir el teléfono en el PDF
+    pdf.text(email, 121, 690);             // Añadir el correo en el PDF
+    pdf.text(ciudad, 130, 120);            // Añadir la ciudad en el PDF
 
-    pdf.save("example.pdf");
+    pdf.save("Compromiso de pago.pdf");
 }
