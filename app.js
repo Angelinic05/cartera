@@ -128,10 +128,12 @@ async function sendSimpleEmail(email, country, pdfCompromisoBlob, pdfHabeasBlob)
         
         // Adjuntar el PDF de compromiso
         formData.append('pdfCompromiso', pdfCompromisoBlob, 'compromiso.pdf');
+        console.log("PDF de compromiso adjuntado.");
 
         // Adjuntar el PDF de habeas data si corresponde
         if (pdfHabeasBlob) {
             formData.append('pdfHabeas', pdfHabeasBlob, 'habeas.pdf');
+            console.log("PDF de habeas data adjuntado.");
         }
 
         // Enviar los datos al servidor
@@ -146,7 +148,7 @@ async function sendSimpleEmail(email, country, pdfCompromisoBlob, pdfHabeasBlob)
         if (result.status === 'success') {
             alert('Correo enviado correctamente.');
         } else {
-            alert('Error al enviar el correo.');
+            alert('Error al enviar el correo: ' + result.message);
         }
     } catch (error) {
         console.error("Error al enviar el correo:", error);
