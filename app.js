@@ -94,9 +94,9 @@ async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     pdf.addImage(habeasImage, 'PNG', 0, 0, 565, 792); // Añade habeas.jpg como fondo
 
     pdf.setFontSize(10);
-    pdf.text(fechaActual, 100, 100);        // Ajusta posición para la fecha
-    pdf.text(identificacion, 150, 150);     // Ajusta posición para la identificación
-    pdf.addImage(signatureImage, 'PNG', 100, 500, 150, 60);  // Firma en una posición ajustada
+    pdf.text(fechaActual, 110, 196);        // Ajusta posición para la fecha
+    pdf.text(identificacion, 85, 693);     // Ajusta posición para la identificación
+    pdf.addImage(signatureImage, 'PNG', 110, 630, 140, 50);  // Firma en una posición ajustada
 
     pdf.save("habeas.pdf");
 }
