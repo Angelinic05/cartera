@@ -18,14 +18,14 @@ function loadImage(url) {
         xhr.send();
     });
 }
-
-let signaturePad = null;
+let signaturePad = null; // Definir fuera de la función para que sea global
 
 window.addEventListener('load', async () => {
     const canvas = document.querySelector("#signature-canvas");
     canvas.height = canvas.offsetHeight;
     canvas.width = canvas.offsetWidth;
 
+    // Inicializar una única instancia de SignaturePad
     signaturePad = new SignaturePad(canvas, {});
 
     const form = document.querySelector('#form');
@@ -40,35 +40,38 @@ window.addEventListener('load', async () => {
         let telefono = document.getElementById('telefono').value;
 
         // Obtener la fecha actual
-        let fechaActual = new Date().toLocaleDateString();
+        const fechaActual = new Date().toLocaleDateString();
 
-        // Validar el correo electrónico y obtener el país y la ciudad
+        // Validar el correo electrónico y obtener el país, la ciudad y si ya fue generado
         const validationResult = await validateEmail(email);
         const messageElement = document.getElementById('message');
 
         if (validationResult.found) {
+            
+
+            // Continuar con la generación si no fue generado previamente
             messageElement.textContent = '';
 
-            // Generar el PDF principal con la ciudad de Google Sheets
-            const ciudad = validationResult.city; // Asignar la ciudad desde la validación
+            // Asignar la ciudad desde la validación
+            const ciudad = validationResult.city;
 
             // Generar el PDF de compromiso
             const pdfCompromisoBlob = await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad);
 
-            // Si el país es "Colombia" en la respuesta, generar también el documento de habeas data
+            // Si el país es "Colombia", generar también el documento de habeas data
             let pdfHabeasBlob = null;
             if (validationResult.country.toLowerCase() === 'colombia') {
                 pdfHabeasBlob = await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
             }
 
-            // Enviar el PDF generado por correo
-            await sendSimpleEmail(email, validationResult.country, pdfCompromisoBlob, pdfHabeasBlob);
+
         } else {
             messageElement.textContent = 'No está registrado.';
             messageElement.style.color = 'red';
         }
     });
 });
+
 
 async function validateEmail(email) {
     try {
@@ -118,39 +121,3 @@ async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     return pdf.output('blob');
 }
 
-async function sendSimpleEmail(email, country, pdfCompromisoBlob, pdfHabeasBlob) {
-    try {
-        // Preparar los datos para enviar
-        const formData = new FormData();
-        formData.append('toEmail', email);
-        formData.append('ccEmail', 'angeliloza01@gmail.com');
-        formData.append('country', country);
-        
-        // Adjuntar el PDF de compromiso
-        formData.append('pdfCompromiso', pdfCompromisoBlob, 'compromiso.pdf');
-        console.log("PDF de compromiso adjuntado.");
-
-        // Adjuntar el PDF de habeas data si corresponde
-        if (pdfHabeasBlob) {
-            formData.append('pdfHabeas', pdfHabeasBlob, 'habeas.pdf');
-            console.log("PDF de habeas data adjuntado.");
-        }
-
-        // Enviar los datos al servidor
-        const response = await fetch('https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-        console.log("Resultado de la respuesta del servidor:", result);
-        
-        if (result.status === 'success') {
-            alert('Correo enviado correctamente.');
-        } else {
-            alert('Error al enviar el correo: ' + result.message);
-        }
-    } catch (error) {
-        console.error("Error al enviar el correo:", error);
-    }
-}
