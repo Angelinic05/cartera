@@ -42,28 +42,34 @@ window.addEventListener('load', async () => {
         // Obtener la fecha actual
         const fechaActual = new Date().toLocaleDateString();
 
-        // Validar el correo electrónico y obtener el país, la ciudad y si ya fue generado
+        // Validar el correo electrónico y obtener el país, la ciudad, cuotas y si ya fue generado
         const validationResult = await validateEmail(email);
         const messageElement = document.getElementById('message');
 
         if (validationResult.found) {
-            
-
             // Continuar con la generación si no fue generado previamente
             messageElement.textContent = '';
 
-            // Asignar la ciudad desde la validación
+            // Asignar la ciudad y cantidad de cuotas desde la validación
             const ciudad = validationResult.city;
+            const cuotas = validationResult.cuotas;
 
-            // Generar el PDF de compromiso
-            const pdfCompromisoBlob = await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad);
+            // Generar el PDF correspondiente según la cantidad de cuotas
+            if (cuotas === 3) {
+                await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad, cuotas, "COMPROMISO DE PAGO3.jpg");
+            } else if (cuotas === 5) {
+                await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad, cuotas, "COMPROMISO DE PAGO5.jpg");
+            } else {
+                messageElement.textContent = 'Cantidad de cuotas no válida.';
+                messageElement.style.color = 'red';
+                return;
+            }
 
             // Si el país es "Colombia", generar también el documento de habeas data
             let pdfHabeasBlob = null;
             if (validationResult.country.toLowerCase() === 'colombia') {
                 pdfHabeasBlob = await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
             }
-
 
         } else {
             messageElement.textContent = 'No está registrado.';
@@ -78,15 +84,15 @@ async function validateEmail(email) {
         const response = await fetch(`https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec?email=${encodeURIComponent(email)}`);
         const data = await response.json();
         console.log("Resultado de la validación de email:", data);
-        return data; // Retorna un objeto con { found, country, city }
+        return data; // Retorna un objeto con { found, country, city, cuotas }
     } catch (error) {
         console.error("Error en la validación de email:", error);
-        return { found: false, country: '', city: '' }; // Retorna un objeto por defecto en caso de error
+        return { found: false, country: '', city: '', cuotas: 0 }; // Retorna un objeto por defecto en caso de error
     }
 }
 
-async function generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad) {
-    const image = await loadImage("COMPROMISO DE PAGO.jpg");
+async function generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad, cuotas, imageFile) {
+    const image = await loadImage(imageFile);
     const signatureImage = signaturePad.toDataURL();
 
     const pdf = new jsPDF('p', 'pt', 'letter');
@@ -94,13 +100,14 @@ async function generatePDF(nombre, identificacion, fechaActual, direccion, telef
     pdf.addImage(signatureImage, 'PNG', 80, 580, 150, 60);
 
     pdf.setFontSize(10);
-    pdf.text(nombre, 210, 162);            // Nombre
-    pdf.text(identificacion, 88, 193);     // Identificación
-    pdf.text(fechaActual, 400, 120);       // Fecha
-    pdf.text(direccion, 200, 180);         // Dirección
-    pdf.text(telefono , 113, 669);          // Teléfono
-    pdf.text(email, 121, 690);             // Email
-    pdf.text(ciudad, 130, 120);            // Ciudad desde Google Sheets
+    pdf.text(nombre, 210, 168);            // Nombre
+    pdf.text(identificacion, 88, 198);     // Identificación
+    pdf.text(fechaActual, 400, 125);       // Fecha
+    pdf.text(direccion, 200, 185);         // Dirección
+    pdf.text(telefono , 102, 668);          // Teléfono
+    pdf.text(email, 121, 688);             // Email
+    pdf.text(ciudad, 130, 125);            // Ciudad desde Google Sheets
+    // pdf.text(`Cuotas: ${cuotas}`, 200, 210);  // Cantidad de cuotas
 
     pdf.save("COMPROMISO DE PAGO.pdf");
     return pdf.output('blob');
@@ -120,4 +127,3 @@ async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     pdf.save("HABEAS DATA.pdf");
     return pdf.output('blob');
 }
-
