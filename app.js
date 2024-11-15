@@ -1,14 +1,13 @@
-function loadImage(url) {
+// Función para cargar una imagen y convertirla a base64
+async function loadImage(url) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('GET', url, true);
         xhr.responseType = "blob";
-        xhr.onload = function () {
+        xhr.onload = () => {
             if (xhr.status === 200) {
                 const reader = new FileReader();
-                reader.onload = function (event) {
-                    resolve(event.target.result);
-                };
+                reader.onload = (event) => resolve(event.target.result);
                 reader.readAsDataURL(xhr.response);
             } else {
                 reject(new Error('Error al cargar la imagen'));
@@ -21,83 +20,40 @@ function loadImage(url) {
 
 let signaturePad = null;
 
+// Inicializa el canvas y el formulario al cargar la página
 window.addEventListener('load', async () => {
     const canvas = document.querySelector("#signature-canvas");
     canvas.height = canvas.offsetHeight;
     canvas.width = canvas.offsetWidth;
 
-    signaturePad = new SignaturePad(canvas, {});
+    signaturePad = new SignaturePad(canvas);
 
     const form = document.querySelector('#form');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        let email = document.getElementById('email').value;
-        let nombre = document.getElementById('nombre').value;
-        let identificacion = document.getElementById('identificacion').value;
-        let direccion = document.getElementById('direccion').value;
-        let telefono = document.getElementById('telefono').value;
+        // Obtiene datos del formulario
+        const email = document.getElementById('email').value;
+        const nombre = document.getElementById('nombre').value;
+        const identificacion = document.getElementById('identificacion').value;
+        const direccion = document.getElementById('direccion').value;
+        const telefono = document.getElementById('telefono').value;
 
         const fechaActual = new Date().toLocaleDateString();
+        const ciudad = "Ciudad genérica";
 
-        const validationResult = await validateEmail(email);
-        const messageElement = document.getElementById('message');
+        // Genera los PDFs
+        const pdfCompromisoBlob = await generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad);
+        const pdfHabeasBlob = await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
 
-        if (validationResult.found) {
-            messageElement.textContent = '';
-            const ciudad = validationResult.city;
-            const cuotas = validationResult.cuotas;
-
-            try {
-                // Generar el PDF según la cantidad de cuotas
-                let pdfPromise;
-                if (cuotas === 3) {
-                    pdfPromise = generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad, cuotas, "COMPROMISO DE PAGO3.jpg");
-                } else if (cuotas === 5) {
-                    pdfPromise = generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad, cuotas, "COMPROMISO DE PAGO5.jpg");
-                } else {
-                    messageElement.textContent = 'Cantidad de cuotas no válida.';
-                    messageElement.style.color = 'red';
-                    return;
-                }
-
-                const pdfBlob = await pdfPromise;
-
-                // Generar documento de habeas data si es de Colombia
-                if (validationResult.country.toLowerCase() === 'colombia') {
-                    await generateHabeasPDF(fechaActual, identificacion, signaturePad.toDataURL());
-                }
-
-                messageElement.textContent = 'Documentos generados con éxito.';
-                messageElement.style.color = 'green';
-
-            } catch (error) {
-                console.error("Error generando los documentos:", error);
-                messageElement.textContent = 'Ocurrió un error al generar los documentos.';
-                messageElement.style.color = 'red';
-            }
-
-        } else {
-            messageElement.textContent = 'No está registrado.';
-            messageElement.style.color = 'red';
-        }
+        // Envía los PDFs por correo
+        await sendEmail(pdfCompromisoBlob, pdfHabeasBlob);
     });
 });
 
-async function validateEmail(email) {
-    try {
-        const response = await fetch(`https://script.google.com/macros/s/AKfycbxLmulSsfmXnD-5sAAd8D7cnDXl4UAz-eP3DsTA-P5Xv21nhfaX_Z_ti2NgNP6tCEm8/exec?email=${encodeURIComponent(email)}`);
-        const data = await response.json();
-        console.log("Resultado de la validación de email:", data);
-        return data;
-    } catch (error) {
-        console.error("Error en la validación de email:", error);
-        return { found: false, country: '', city: '', cuotas: 0 };
-    }
-}
-
-async function generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad, cuotas, imageFile) {
-    const image = await loadImage(imageFile);
+// Genera el PDF de compromiso
+async function generatePDF(nombre, identificacion, fechaActual, direccion, telefono, email, ciudad) {
+    const image = await loadImage("COMPROMISO DE PAGO.jpg");
     const signatureImage = signaturePad.toDataURL();
 
     const pdf = new jsPDF('p', 'pt', 'letter');
@@ -105,18 +61,18 @@ async function generatePDF(nombre, identificacion, fechaActual, direccion, telef
     pdf.addImage(signatureImage, 'PNG', 80, 580, 150, 60);
 
     pdf.setFontSize(10);
-    pdf.text(nombre, 210, 168);
-    pdf.text(identificacion, 88, 198);
-    pdf.text(fechaActual, 400, 125);
-    pdf.text(direccion, 200, 185);
-    pdf.text(telefono, 102, 668);
-    pdf.text(email, 121, 688);
-    pdf.text(ciudad, 130, 125);
+    pdf.text(nombre, 210, 162);
+    pdf.text(identificacion, 88, 193);
+    pdf.text(fechaActual, 400, 120);
+    pdf.text(direccion, 200, 180);
+    pdf.text(telefono, 113, 669);
+    pdf.text(email, 121, 690);
+    pdf.text(ciudad, 130, 120);
 
-    pdf.save("COMPROMISO_DE_PAGO.pdf");
     return pdf.output('blob');
 }
 
+// Genera el PDF de habeas data
 async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     const habeasImage = await loadImage("HABEAS DATA.jpg");
 
@@ -127,6 +83,24 @@ async function generateHabeasPDF(fechaActual, identificacion, signatureImage) {
     pdf.text(identificacion, 85, 693);
     pdf.addImage(signatureImage, 'PNG', 110, 630, 140, 50);
 
-    pdf.save("HABEAS_DATA.pdf");
     return pdf.output('blob');
+}
+
+// Envía los PDFs por correo usando Email.js
+async function sendEmail(pdfCompromisoBlob, pdfHabeasBlob) {
+    const formData = new FormData();
+    formData.append('compromiso', pdfCompromisoBlob, 'COMPROMISO_DE_PAGO.pdf');
+    formData.append('habeas', pdfHabeasBlob, 'HABEAS_DATA.pdf');
+
+    try {
+        const response = await emailjs.sendForm(
+            'service_zsnah7g',
+            'template_qrwq4pi',
+            formData,
+            '1fTlnJ6lWrRKXSSki'
+        );
+        console.log('Correo enviado con éxito', response.status, response.text);
+    } catch (error) {
+        console.error('Error al enviar el correo:', error);
+    }
 }
